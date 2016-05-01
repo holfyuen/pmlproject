@@ -1,0 +1,92 @@
+---
+title: "PMLA4"
+author: "Holf Yuen"
+date: "Apr 30 2016"
+output: html_document
+---
+
+# Introduction
+The goal of this project is to predict the manner in which people did the exercise. In this project, we use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The 5 ways are classified as in the "classe" variable in the training set.
+
+```{r setoptions, echo = FALSE}
+library(knitr)
+opts_chunk$set(warning=FALSE, message = FALSE, cache=TRUE)
+```
+
+# Load necessary packages
+```{r}
+library(caret)
+library(rpart)
+```
+
+# Download and read data
+To test the out-of-sample accuracy in our prediction models, we split the original pml-training dataset into train and test sets.
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile="pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",destfile="pml-testing.csv")
+pmldata=read.csv("pml-training.csv")
+pmltest=read.csv("pml-testing.csv")
+set.seed(4689)
+inTrain=createDataPartition(pmldata$classe,p=0.8,list=F)
+train=pmldata[inTrain,]
+test=pmldata[-inTrain,]
+```
+
+# Cleaning Data
+````{r}
+# Remove variables such as ids, names, and timestamps that are unrelated to prediction
+train2 = train[,-(1:5)]
+# Remove variables with near zero variance
+nearzero = nearZeroVar(train2, saveMetrics = TRUE)
+train2 = train2[, !nearzero$nzv]
+# Remove variables with too many (>70%) NA
+toomanyna=sapply(colnames(train2),function(x)sum(is.na(train[, x])))/nrow(train2)>0.7
+train2=train2[,!toomanyna]
+````
+
+# Model Building
+We do five-fold cross-validation and preprocessing with principal components
+````{r}
+control=trainControl(method="cv",number=5,preProcOptions = "pca")
+````
+We select the following models for comparison
+````{r}
+# Decision trees
+tree=train(classe~.,data=train2,method="rpart",trControl=control)
+# Random forest
+rf=train(classe~.,data=train2,method="rf",trControl=control)
+# Boosting
+gbm=train(classe~.,data=train2,method="gbm",trControl=control,verbose=F)
+# Linear Discriminant Analysis
+lda=train(classe~., data=train2, method="lda",trControl=control)
+````
+
+# In-sample accuracy
+````{r}
+models = c("Decision trees", "Random forest","Boosting","LDA")
+Accuracy=c(max(tree$results$Accuracy),max(rf$results$Accuracy),max(gbm$results$Accuracy),max(lda$results$Accuracy))
+names(Accuracy)=models
+Accuracy
+````
+
+# Out of sample accuracy
+We test our models on the test set we splitted
+````{r}
+models = c("Decision trees", "Random forest","Boosting","LDA")
+Accuracy2=c(confusionMatrix(test$classe,predict(tree,test))$overall['Accuracy'],
+           confusionMatrix(test$classe,predict(rf,test))$overall['Accuracy'],
+           confusionMatrix(test$classe,predict(gbm,test))$overall['Accuracy'],
+           confusionMatrix(test$classe,predict(lda,test))$overall['Accuracy'])
+names(Accuracy2)=models
+Accuracy2
+````
+
+# Conclusion
+The random forest method gives the highest accuracy for both in-sample and out-of-sample testing. This will be chosen to predict the 20 test cases. The boosting method is very close in accuracy compared with random forest, while the two other methods are less accurate.
+
+# End note: Testing
+Here is the prediction outcome for the test set using random forest
+````{r warning=FALSE}
+quiz=predict(rf,pmltest)
+quiz
+````
